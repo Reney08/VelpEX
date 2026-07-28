@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">🏆 Gesamtsiegerliste (Saisonwertung)</h1>
+        <a href="{{ url_for('download_pdf') }}" class="btn btn-primary shadow-sm">
+            📄 Als PDF herunterladen
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th class="px-3 py-2" style="width: 70px;">Pos.</th>
+                            <th class="px-3 py-2">Name</th>
+                            <th class="px-3 py-2">Heimatclub</th>
+                            <th class="px-3 py-2 text-center" style="width: 160px;">Turniere gespielt</th>
+                            <th class="px-3 py-2 text-end" style="width: 160px;">Gesamtpunkte</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in leaderboard %}
+                            <tr>
+                                <td class="px-3 py-2 fw-bold">{{ loop.index }}</td>
+                                <td class="px-3 py-2 fw-semibold text-dark">{{ row.Name }}</td>
+                                <td class="px-3 py-2 text-muted">{{ row.Heimatclub }}</td>
+                                <td class="px-3 py-2 text-center"><span class="badge bg-secondary">{{ row.Turniere }}</span></td>
+                                <td class="px-3 py-2 text-end fw-bold text-success">{{ row.Punkte }} Pkt.</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center p-4 text-muted">Noch keine Turnierdaten für die Gesamtwertung importiert.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
