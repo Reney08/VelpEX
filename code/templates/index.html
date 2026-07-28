@@ -2,17 +2,17 @@
 
 {% block content %}
 <div class="container pt-4" style="max-width: 600px;">
-    <div class="card shadow-sm border-0 mt-4">
+    <div class="card shadow-sm border-0 mt-2">
         <div class="card-body p-4">
             <h2 class="card-title h4 mb-4">⛳ Neues Turnier hochladen</h2>
             <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
                 
-                <div class="mb-4">
+                <div class="mb-3">
                     <label class="form-label fw-bold">1. CSV-Datei auswählen</label>
                     <input type="file" name="file" class="form-control" accept=".csv" required>
                 </div>
 
-                <div class="mb-4">
+                <div class="mb-3">
                     <label class="form-label fw-bold">2. Turnier-Wertung</label>
                     <select class="form-select" name="tournament_type">
                         <option value="18_loch" selected>18 Loch Clubturnier</option>
@@ -22,31 +22,40 @@
                     </select>
                 </div>
 
+                <div class="mb-4">
+                    <label class="form-label fw-bold">3. Ziel-Ordner (Optional)</label>
+                    <select class="form-select" name="folder_id">
+                        <option value="">-- Keinem Ordner zuweisen --</option>
+                        {% for f in all_folders_flat %}
+                            <option value="{{ f.id }}">{{ f.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
                 <button type="submit" class="btn btn-success w-100 py-2 shadow-sm fw-bold">
                     Turnier importieren &amp; berechnen
                 </button>
             </form>
         </div>
-        <hr class="my-4">
+    </div>
 
-        <!-- DATENBANK BACKUP & RESTORE -->
-        <div class="card bg-light border-0">
-            <div class="card-body">
-                <h3 class="h6 fw-bold mb-3">💾 Datenbank sichern & wiederherstellen</h3>
-                <div class="d-flex gap-2 mb-3">
-                    <a href="{{ url_for('export_db') }}" class="btn btn-sm btn-outline-primary w-100">
-                        ⬇️ Datenbank Exportieren (.db)
-                    </a>
-                </div>
-                
-                <form action="{{ url_for('import_db') }}" method="post" enctype="multipart/form-data" onsubmit="return confirm('Achtung: Dies überschreibt alle aktuellen Daten mit dem Backup! Fortfahren?');">
-                    <label class="form-label small fw-bold">Backup importieren</label>
-                    <div class="input-group input-group-sm">
-                        <input type="file" name="db_file" class="form-control" accept=".db" required>
-                        <button type="submit" class="btn btn-warning">⬆️ Importieren</button>
-                    </div>
-                </form>
+    <!-- DATENBANK EXPORT/IMPORT (FÜR LAPTOP-WECHSEL) -->
+    <div class="card bg-light border-0 shadow-sm mt-4">
+        <div class="card-body p-4">
+            <h3 class="h6 fw-bold mb-3">💾 Datenbank sichern &amp; übertragen</h3>
+            <div class="d-flex gap-2 mb-3">
+                <a href="{{ url_for('export_db') }}" class="btn btn-sm btn-outline-primary w-100 fw-bold">
+                    ⬇️ Datenbank sichern (.db herunterladen)
+                </a>
             </div>
+            
+            <form action="{{ url_for('import_db') }}" method="post" enctype="multipart/form-data" onsubmit="return confirm('Achtung: Dies überschreibt alle aktuellen Daten mit dem Backup! Fortfahren?');">
+                <label class="form-label small fw-bold">Backup von altem Laptop importieren</label>
+                <div class="input-group input-group-sm">
+                    <input type="file" name="db_file" class="form-control" accept=".db" required>
+                    <button type="submit" class="btn btn-warning fw-bold">⬆️ Importieren</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
