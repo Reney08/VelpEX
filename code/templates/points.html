@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <div class="d-flex justify-content-between align-items-center pb-2 mb-3 border-bottom">
+        <h1 class="h3 mb-0">⚙️ Bepunktung anpassen</h1>
+    </div>
+
+    <form action="{{ url_for('save_points') }}" method="post">
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    Hier kannst du die Punkteverteilung für die Ränge 1 bis 20 anpassen. Nach dem Speichern werden alle Gesamtwertungen und Turnierlisten automatisch mit den neuen Werten neu berechnet.
+                </p>
+
+                <ul class="nav nav-tabs mb-3" id="pointsTab" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active fw-bold" id="p18-tab" data-bs-toggle="tab" data-bs-target="#p18" type="button">18 Loch</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold" id="p9-tab" data-bs-toggle="tab" data-bs-target="#p9" type="button">9 Loch</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold" id="pcm-tab" data-bs-toggle="tab" data-bs-target="#pcm" type="button">Clubmeisterschaft</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold" id="pfin-tab" data-bs-toggle="tab" data-bs-target="#pfin" type="button">Finale</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="pointsTabContent">
+                    {% set types = [
+                        ('18_loch', 'p18', '18 Loch Clubturnier'),
+                        ('9_loch', 'p9', '9 Loch Clubturnier'),
+                        ('clubmeisterschaft', 'pcm', 'Clubmeisterschaft'),
+                        ('finale', 'pfin', 'Finale')
+                    ] %}
+
+                    {% for key, tab_id, label in types %}
+                        <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="{{ tab_id }}" role="tabpanel">
+                            <h6 class="fw-bold mb-3 text-secondary">{{ label }} - Punktetabelle</h6>
+                            <div class="row row-cols-1 row-cols-md-4 g-2">
+                                {% for rank in range(1, 21) %}
+                                    <div class="col">
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text fw-bold" style="width: 65px;">Rang {{ rank }}</span>
+                                            <input type="number" step="any" class="form-control text-end" name="pts_{{ key }}_{{ rank }}" value="{{ points_sets.get(key, {}).get(rank, 0) }}" required>
+                                            <span class="input-group-text">Pkt</span>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="card-footer bg-light text-end py-3">
+                <button type="submit" class="btn btn-success fw-bold px-4">💾 Punkte speichern</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
