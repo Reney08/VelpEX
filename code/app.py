@@ -72,7 +72,6 @@ def init_db():
         );
     """)
     
-    # Standard-Punkte in DB schreiben, falls noch keine Daten vorhanden
     cursor.execute("SELECT COUNT(*) FROM points_config")
     if cursor.fetchone()[0] == 0:
         for t_type, ranks in DEFAULT_PUNKTE.items():
@@ -88,7 +87,6 @@ def init_db():
     conn.close()
 
 def get_points_sets():
-    """Lädt die aktuellen Punkte-Einstellungen dynamisch aus der Datenbank"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT tournament_type, rank, points FROM points_config")
@@ -100,7 +98,6 @@ def get_points_sets():
         t_type, rank, pts = row['tournament_type'], row['rank'], row['points']
         if t_type not in points_sets:
             points_sets[t_type] = {}
-        # Integer wenn ganzzahlig, sonst float
         points_sets[t_type][rank] = int(pts) if pts.is_integer() else pts
     return points_sets
 
@@ -124,9 +121,8 @@ def get_all_tables():
     return tables
 
 def get_subfolder_ids(folder_id):
-    """Findet rekursiv einen Ordner sowie alle seine Unterordner"""
     if folder_id is None:
-        return None
+        return set()
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id, parent_id FROM folders")
@@ -175,7 +171,6 @@ def inject_sidebar_tree():
         folder_tree=root_folders,
         unassigned_tournaments=unassigned_tournaments,
         all_folders_flat=all_folders,
-        root_folders=root_folders,
         tables=tables
     )
 
@@ -217,14 +212,16 @@ def move_tournament(table_name):
     conn.close()
     return redirect(url_for('view_table', table_name=table_name))
 
-def get_overall_data(folder_id=None):
-    """Berechnet die Gesamtliste – optional gefiltert nach Ordner/Jahr"""
+def get_overall_data(folder_id):
+    """Berechnet die Jahressiegerliste zwingend für einen ausgewählten Hauptordner"""
+    if folder_id is None:
+        return []
+        
     tables = get_all_tables()
     points_sets = get_points_sets()
     
-    if folder_id is not None:
-        allowed_folder_ids = get_subfolder_ids(folder_id)
-        tables = [t for t in tables if t.get('folder_id') in allowed_folder_ids]
+    allowed_folder_ids = get_subfolder_ids(folder_id)
+    tables = [t for t in tables if t.get('folder_id') in allowed_folder_ids]
         
     all_points = {}
     tournament_counts = {}
@@ -364,25 +361,44 @@ def delete_table(table_name):
 
 @app.route('/overall')
 def overall_leaderboard():
-    selected_folder_id = request.args.get('folder_id')
-    selected_folder_id = int(selected_folder_id) if selected_folder_id and selected_folder_id.isdigit() else None
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name FROM folders WHERE parent_id IS NULL ORDER BY name DESC")
+    year_folders = [dict(r) for r in cursor.fetchall()]
+    conn.close()
     
-    leaderboard = get_overall_data(selected_folder_id)
+    selected_folder_id = request.args.get('folder_id')
+    if selected_folder_id and selected_folder_id.isdigit():
+        selected_folder_id = int(selected_folder_id)
+    elif year_folders:
+        selected_folder_id = year_folders[0]['id']
+    else:
+        selected_folder_id = None
+    
+    leaderboard = get_overall_data(selected_folder_id) if selected_folder_id else []
+    
     return render_template(
         'overall.html', 
         leaderboard=leaderboard, 
         current_table='overall', 
-        selected_folder_id=selected_folder_id
+        selected_folder_id=selected_folder_id,
+        year_folders=year_folders
     )
 
 @app.route('/overall/pdf')
 def download_pdf():
     selected_folder_id = request.args.get('folder_id')
-    selected_folder_id = int(selected_folder_id) if selected_folder_id and selected_folder_id.isdigit() else None
+    if selected_folder_id and selected_folder_id.isdigit():
+        selected_folder_id = int(selected_folder_id)
+    else:
+        conn = get_db_connection()
+        res = conn.execute("SELECT id FROM folders WHERE parent_id IS NULL ORDER BY name DESC LIMIT 1").fetchone()
+        selected_folder_id = res['id'] if res else None
+        conn.close()
     
     leaderboard = get_overall_data(selected_folder_id)
     
-    folder_title = "Alle Jahre"
+    folder_title = "Saison"
     if selected_folder_id:
         conn = get_db_connection()
         res = conn.execute("SELECT name FROM folders WHERE id = ?", (selected_folder_id,)).fetchone()
@@ -424,13 +440,11 @@ def download_pdf():
 
 @app.route('/points', methods=['GET'])
 def edit_points():
-    """Seite zur Bearbeitung der Punkte-Verteilung"""
     points_sets = get_points_sets()
     return render_template('points.html', points_sets=points_sets)
 
 @app.route('/points/save', methods=['POST'])
 def save_points():
-    """Speichert angepasste Punktewerte in der Datenbank"""
     conn = get_db_connection()
     cursor = conn.cursor()
     

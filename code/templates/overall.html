@@ -3,26 +3,28 @@
 {% block content %}
 <div class="container-fluid p-0">
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
-        <h1 class="h2 mb-0">🏆 Gesamtsiegerliste</h1>
+        <h1 class="h2 mb-0">🏆 Jahressiegerliste</h1>
+        {% if selected_folder_id %}
         <a href="{{ url_for('download_pdf', folder_id=selected_folder_id) }}" class="btn btn-primary shadow-sm">
             📄 Als PDF herunterladen
         </a>
+        {% endif %}
     </div>
 
-    <!-- SAISON / ORDNER FILTER -->
+    <!-- SAISON / ORDNER DROPDOWN -->
     <div class="card shadow-sm border-0 mb-4 bg-light">
         <div class="card-body p-3 d-flex align-items-center gap-3">
-            <span class="fw-bold text-dark">Saison / Jahr auswählen:</span>
-            <div class="btn-group" role="group">
-                <a href="{{ url_for('overall_leaderboard') }}" class="btn btn-sm {% if not selected_folder_id %}btn-dark{% else %}btn-outline-dark{% endif %}">
-                    🌐 Alle Jahre
-                </a>
-                {% for folder in root_folders %}
-                    <a href="{{ url_for('overall_leaderboard', folder_id=folder.id) }}" class="btn btn-sm {% if selected_folder_id == folder.id %}btn-dark{% else %}btn-outline-dark{% endif %}">
-                        📁 {{ folder.name }}
-                    </a>
+            <label for="yearSelect" class="fw-bold text-dark mb-0">Saison / Jahr auswählen:</label>
+            <select id="yearSelect" class="form-select form-select-sm" style="max-width: 280px;" onchange="if(this.value) location = this.value;">
+                {% if not year_folders %}
+                    <option value="">Keine Jahres-Ordner vorhanden</option>
+                {% endif %}
+                {% for folder in year_folders %}
+                    <option value="{{ url_for('overall_leaderboard', folder_id=folder.id) }}" {% if selected_folder_id == folder.id %}selected{% endif %}>
+                        📂 {{ folder.name }}
+                    </option>
                 {% endfor %}
-            </div>
+            </select>
         </div>
     </div>
 
@@ -50,7 +52,13 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="5" class="text-center p-4 text-muted">Keine Turnierdaten für die gewählte Auswertung vorhanden.</td>
+                                <td colspan="5" class="text-center p-4 text-muted">
+                                    {% if year_folders %}
+                                        Keine Turnierdaten für die ausgewählte Saison vorhanden.
+                                    {% else %}
+                                        Bitte erstelle in der linken Seitenleiste mindestens einen Hauptordner (z. B. "2026"), um Jahressiegerlisten anzuzeigen.
+                                    {% endif %}
+                                </td>
                             </tr>
                         {% endfor %}
                     </tbody>
