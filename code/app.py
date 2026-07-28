@@ -13,11 +13,12 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
+# --- PFAD-EINSTELLUNGEN ---
 def get_template_path():
-    """Findet den temporären Ordner für die HTML-Templates, wenn es eine .exe ist."""
     if hasattr(sys, '_MEIPASS'):
         return sys._MEIPASS
-    return os.path.abspath(".")
+    # ÄNDERUNG: Nutzt exakt den Ordner, in dem app.py liegt (/code/)
+    return os.path.dirname(os.path.abspath(__file__))
 
 def get_db_path():
     """Sucht die Datenbank IMMER genau in dem Ordner, wo die .exe (oder app.py) liegt."""
@@ -313,7 +314,28 @@ def download_pdf():
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name='Gesamtsiegerliste.pdf', mimetype='application/pdf')
 
+@app.route('/database/export')
+def export_db():
+    """Lädt die aktuelle turniere.db als Backup herunter."""
+    db_path = get_db_path()
+    if os.path.exists(db_path):
+        return send_file(db_path, as_attachment=True, download_name='turniere_backup.db')
+    return "Keine Datenbank gefunden", 404
 
+@app.route('/database/import', methods=['POST'])
+def import_db():
+    """Überschreibt die aktuelle Datenbank mit der hochgeladenen Backup-Datei."""
+    if 'db_file' not in request.files:
+        return "Keine Datei ausgewählt", 400
+    
+    file = request.files['db_file']
+    if file.filename == '' or not file.filename.endswith('.db'):
+        return "Ungültiges Dateiformat. Es muss eine .db Datei sein.", 400
+    
+    db_path = get_db_path()
+    # Bestehende DB mit der neuen Backup-Datei überschreiben
+    file.save(db_path)
+    return redirect(url_for('index'))
 
 def start_flask():
     """Startet den Flask-Server im Hintergrund."""

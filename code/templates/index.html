@@ -27,6 +27,27 @@
                 </button>
             </form>
         </div>
+        <hr class="my-4">
+
+        <!-- DATENBANK BACKUP & RESTORE -->
+        <div class="card bg-light border-0">
+            <div class="card-body">
+                <h3 class="h6 fw-bold mb-3">💾 Datenbank sichern & wiederherstellen</h3>
+                <div class="d-flex gap-2 mb-3">
+                    <a href="{{ url_for('export_db') }}" class="btn btn-sm btn-outline-primary w-100">
+                        ⬇️ Datenbank Exportieren (.db)
+                    </a>
+                </div>
+                
+                <form action="{{ url_for('import_db') }}" method="post" enctype="multipart/form-data" onsubmit="return confirm('Achtung: Dies überschreibt alle aktuellen Daten mit dem Backup! Fortfahren?');">
+                    <label class="form-label small fw-bold">Backup importieren</label>
+                    <div class="input-group input-group-sm">
+                        <input type="file" name="db_file" class="form-control" accept=".db" required>
+                        <button type="submit" class="btn btn-warning">⬆️ Importieren</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
