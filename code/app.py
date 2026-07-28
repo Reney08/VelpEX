@@ -1,8 +1,6 @@
 import sys
 import os
 
-# FIX FÜR PYINSTALLER --noconsole MODE
-# Verhindert, dass print() und Logs ohne Konsole die App zum Absturz bringen
 if sys.stdout is None:
     sys.stdout = open(os.devnull, 'w')
 if sys.stderr is None:
@@ -23,7 +21,6 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-# Flask-Logs stummschalten
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
@@ -46,7 +43,6 @@ base_dir = get_template_path()
 app = Flask(__name__, template_folder=os.path.join(base_dir, 'templates'))
 app.secret_key = 'golf_app_secret_key_exe'
 
-# FEHLER-LOGGING FÜR DIE EXE
 @app.errorhandler(Exception)
 def handle_exception(e):
     tb = traceback.format_exc()
@@ -66,13 +62,18 @@ DEFAULT_PUNKTE = {
 }
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=30.0)
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
+    
+    # ERMÖGLICHT GLEICHZEITIGE ZUGRIFFE (WAL-Modus)
+    cursor.execute("PRAGMA journal_mode=WAL;")
+    cursor.execute("PRAGMA busy_timeout=10000;")
+    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tournament_metadata (
             table_name TEXT PRIMARY KEY,
@@ -127,7 +128,6 @@ def get_points_sets():
     return points_sets
 
 def get_all_tables():
-    init_db()
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -251,37 +251,39 @@ def get_overall_data(folder_id):
     tournament_counts = {}
     
     conn = get_db_connection()
+    cursor = conn.cursor()
+    
     for t in tables:
         table_name = t['table_name']
         t_type = t['tournament_type']
         points_map = points_sets.get(t_type, points_sets.get('18_loch', {}))
         
         try:
+            # Schnelle SQLite Abfrage statt Panda-Verarbeitung
             query = f"SELECT Name, Heimatclub, Rng FROM [{table_name}] WHERE TRIM(Heimatclub) = 'Habichtswald, GC'"
-            df = pd.read_sql_query(query, conn)
-            df.columns = df.columns.str.strip()
+            cursor.execute(query)
+            rows = cursor.fetchall()
             
-            if 'Rng' not in df.columns or 'Name' not in df.columns:
-                continue
-            
-            for n in df['Name'].dropna().unique():
-                tournament_counts[n] = tournament_counts.get(n, 0) + 1
-            
-            df['Rng'] = pd.to_numeric(df['Rng'], errors='coerce')
-            df = df.dropna(subset=['Name', 'Rng'])
-            
-            for row in df.itertuples():
-                name = row.Name
-                club = row.Heimatclub if pd.notna(row.Heimatclub) and str(row.Heimatclub).strip() != 'nan' else "Kein Club"
-                rng_val = int(row.Rng)
-                punkte = points_map.get(rng_val, 0)
+            seen_names = set()
+            for row in rows:
+                name = row['Name']
+                club = row['Heimatclub'] if row['Heimatclub'] else "Kein Club"
+                rng_raw = row['Rng']
+                
+                if name and name not in seen_names:
+                    seen_names.add(name)
+                    tournament_counts[name] = tournament_counts.get(name, 0) + 1
+                
+                try:
+                    rng_val = int(float(rng_raw))
+                    punkte = points_map.get(rng_val, 0)
+                except (ValueError, TypeError):
+                    punkte = 0
                 
                 key = (name, club)
-                if key not in all_points:
-                    all_points[key] = 0
-                all_points[key] += punkte
+                all_points[key] = all_points.get(key, 0) + punkte
                     
-        except Exception as e:
+        except Exception:
             pass
             
     conn.close()
@@ -295,11 +297,8 @@ def get_overall_data(folder_id):
             'Turniere': tournament_counts.get(name, 0)
         })
         
-    df_overall = pd.DataFrame(leaderboard)
-    if not df_overall.empty:
-        df_overall = df_overall.sort_values(by=['Punkte', 'Name'], ascending=[False, True]).reset_index(drop=True)
-        return df_overall.to_dict(orient='records')
-    return []
+    leaderboard.sort(key=lambda x: (-x['Punkte'], x['Name']))
+    return leaderboard
 
 @app.route('/')
 def index():
@@ -507,6 +506,9 @@ def start_flask():
     app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
 
 if __name__ == '__main__':
+    # Initialisiere Datenbank genau ein Mal beim Start!
+    init_db()
+    
     flask_thread = Thread(target=start_flask)
     flask_thread.daemon = True
     flask_thread.start()
@@ -520,7 +522,7 @@ if __name__ == '__main__':
             resizable=True
         )
         webview.start()
-    except Exception as e:
+    except Exception:
         import webbrowser
         webbrowser.open("http://127.0.0.1:5000")
         while True:
