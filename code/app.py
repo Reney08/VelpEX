@@ -1,6 +1,16 @@
-import os
-import sqlite3
 import sys
+import os
+
+# FIX FÜR PYINSTALLER --noconsole MODE
+# Verhindert, dass print() und Logs ohne Konsole die App zum Absturz bringen
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, 'w')
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, 'w')
+
+import sqlite3
+import logging
+import traceback
 import webview
 from threading import Thread
 from io import BytesIO
@@ -13,7 +23,10 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-# Pfadverwaltung bezogen auf diese app.py
+# Flask-Logs stummschalten
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
+
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def get_template_path():
@@ -31,7 +44,19 @@ def get_db_path():
 DB_NAME = get_db_path()
 base_dir = get_template_path()
 app = Flask(__name__, template_folder=os.path.join(base_dir, 'templates'))
-app.secret_key = 'golf_app_secret_key'
+app.secret_key = 'golf_app_secret_key_exe'
+
+# FEHLER-LOGGING FÜR DIE EXE
+@app.errorhandler(Exception)
+def handle_exception(e):
+    tb = traceback.format_exc()
+    try:
+        log_path = os.path.join(os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else APP_DIR, 'error_log.txt')
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"\n--- FEHLER BEI {request.path} ---\n{tb}\n")
+    except Exception:
+        pass
+    return f"<div style='padding:20px; font-family:sans-serif;'><h2>Ein Fehler ist aufgetreten:</h2><pre style='background:#f8f9fa; padding:15px; border-radius:5px;'>{tb}</pre></div>", 500
 
 DEFAULT_PUNKTE = {
     '18_loch': {1: 500, 2: 300, 3: 190, 4: 135, 5: 110, 6: 100, 7: 90, 8: 85, 9: 80, 10: 75, 11: 70, 12: 65, 13: 60, 14: 57, 15: 55, 16: 53, 17: 51, 18: 49, 19: 47, 20: 45},
@@ -213,7 +238,6 @@ def move_tournament(table_name):
     return redirect(url_for('view_table', table_name=table_name))
 
 def get_overall_data(folder_id):
-    """Berechnet die Jahressiegerliste zwingend für einen ausgewählten Hauptordner"""
     if folder_id is None:
         return []
         
@@ -258,7 +282,7 @@ def get_overall_data(folder_id):
                 all_points[key] += punkte
                     
         except Exception as e:
-            print(f"Fehler bei Auswertung von {table_name}: {e}")
+            pass
             
     conn.close()
     
@@ -481,17 +505,23 @@ def import_db():
 
 def start_flask():
     app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
-    
+
 if __name__ == '__main__':
-    if sys.platform == 'win32' or getattr(sys, 'frozen', False):
-        flask_thread = Thread(target=start_flask)
-        flask_thread.daemon = True
-        flask_thread.start()
-        webview.create_window("GCH Auswertung Intern", "http://127.0.0.1:5000", width=1200, height=800)
+    flask_thread = Thread(target=start_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    try:
+        window = webview.create_window(
+            "GCH Auswertung Intern", 
+            "http://127.0.0.1:5000", 
+            width=1300, 
+            height=850,
+            resizable=True
+        )
         webview.start()
-    else:
+    except Exception as e:
         import webbrowser
-        from threading import Timer
-        def open_browser(): webbrowser.open_new("http://127.0.0.1:5000/")
-        Timer(1.5, open_browser).start()
-        app.run(host='127.0.0.1', port=5000, debug=True)
+        webbrowser.open("http://127.0.0.1:5000")
+        while True:
+            pass
