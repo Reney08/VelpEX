@@ -32,11 +32,18 @@ def get_template_path():
     return APP_DIR
 
 def get_db_path():
+    # Wenn als .exe ausgeführt: Speichere die DB sicher im lokalen Windows-AppData-Ordner
+    # Das verhindert SQLite-Locking-Probleme auf WSL/Netzwerk-Pfaden komplett!
     if getattr(sys, 'frozen', False):
-        application_path = os.path.dirname(sys.executable)
+        base_folder = os.path.join(
+            os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 
+            'GolfTurnierManager'
+        )
     else:
-        application_path = APP_DIR
-    return os.path.join(application_path, 'turniere.db')
+        base_folder = APP_DIR
+    
+    os.makedirs(base_folder, exist_ok=True)
+    return os.path.join(base_folder, 'turniere.db')
 
 DB_NAME = get_db_path()
 base_dir = get_template_path()
@@ -68,49 +75,51 @@ def get_db_connection():
 
 def init_db():
     conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # ERMÖGLICHT GLEICHZEITIGE ZUGRIFFE (WAL-Modus)
-    cursor.execute("PRAGMA journal_mode=WAL;")
-    cursor.execute("PRAGMA busy_timeout=10000;")
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tournament_metadata (
-            table_name TEXT PRIMARY KEY,
-            display_name TEXT,
-            tournament_type TEXT,
-            folder_id INTEGER
-        );
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS folders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            parent_id INTEGER
-        );
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS points_config (
-            tournament_type TEXT,
-            rank INTEGER,
-            points REAL,
-            PRIMARY KEY (tournament_type, rank)
-        );
-    """)
-    
-    cursor.execute("SELECT COUNT(*) FROM points_config")
-    if cursor.fetchone()[0] == 0:
-        for t_type, ranks in DEFAULT_PUNKTE.items():
-            for r, p in ranks.items():
-                cursor.execute("INSERT INTO points_config (tournament_type, rank, points) VALUES (?, ?, ?)", (t_type, r, p))
-                
-    cursor.execute("PRAGMA table_info(tournament_metadata)")
-    cols = [column['name'] for column in cursor.fetchall()]
-    if 'folder_id' not in cols:
-        cursor.execute("ALTER TABLE tournament_metadata ADD COLUMN folder_id INTEGER;")
+    try:
+        cursor = conn.cursor()
         
-    conn.commit()
-    conn.close()
+        # ERMÖGLICHT GLEICHZEITIGE ZUGRIFFE (WAL-Modus)
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA busy_timeout=10000;")
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tournament_metadata (
+                table_name TEXT PRIMARY KEY,
+                display_name TEXT,
+                tournament_type TEXT,
+                folder_id INTEGER
+            );
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS folders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                parent_id INTEGER
+            );
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS points_config (
+                tournament_type TEXT,
+                rank INTEGER,
+                points REAL,
+                PRIMARY KEY (tournament_type, rank)
+            );
+        """)
+        
+        cursor.execute("SELECT COUNT(*) FROM points_config")
+        if cursor.fetchone()[0] == 0:
+            for t_type, ranks in DEFAULT_PUNKTE.items():
+                for r, p in ranks.items():
+                    cursor.execute("INSERT INTO points_config (tournament_type, rank, points) VALUES (?, ?, ?)", (t_type, r, p))
+                    
+        cursor.execute("PRAGMA table_info(tournament_metadata)")
+        cols = [column['name'] for column in cursor.fetchall()]
+        if 'folder_id' not in cols:
+            cursor.execute("ALTER TABLE tournament_metadata ADD COLUMN folder_id INTEGER;")
+            
+        conn.commit()
+    finally:
+        conn.close()
 
 def get_points_sets():
     conn = get_db_connection()
@@ -495,18 +504,43 @@ def export_db():
 
 @app.route('/database/import', methods=['POST'])
 def import_db():
-    if 'db_file' not in request.files: return "Keine Datei", 400
+    if 'db_file' not in request.files: 
+        return "Keine Datei", 400
     file = request.files['db_file']
-    if file.filename == '' or not file.filename.endswith('.db'): return "Nur .db Dateien gestattet", 400
+    if file.filename == '' or not file.filename.endswith('.db'): 
+        return "Nur .db Dateien gestattet", 400
     
-    file.save(get_db_path())
+    db_path = get_db_path()
+    
+    # Eventuelle temporäre WAL-Dateien entfernen, um Cache-Probleme zu vermeiden
+    for ext in ['-wal', '-shm']:
+        tmp_file = db_path + ext
+        if os.path.exists(tmp_file):
+            try:
+                os.remove(tmp_file)
+            except Exception:
+                pass
+
+    # Backup-Datei speichern
+    file.save(db_path)
+    
+    # WICHTIG: Nach dem Import sofort init_db() aufrufen,
+    # um das hochgeladene Backup automatisch auf den neuesten Stand zu bringen!
+    try:
+        init_db()
+    except Exception as e:
+        return f"Fehler beim Aktualisieren der importierten Datenbank: {e}", 500
+    
     return redirect(url_for('index'))
+
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204
 
 def start_flask():
     app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
 
 if __name__ == '__main__':
-    # Initialisiere Datenbank genau ein Mal beim Start!
     init_db()
     
     flask_thread = Thread(target=start_flask)
@@ -514,15 +548,23 @@ if __name__ == '__main__':
     flask_thread.start()
     
     try:
+        # Versuche explizit die Edge-WebView2-Engine von Windows zu nutzen
         window = webview.create_window(
-            "GCH Auswertung Intern", 
+            "Golf Turnier Manager", 
             "http://127.0.0.1:5000", 
             width=1300, 
             height=850,
             resizable=True
         )
-        webview.start()
-    except Exception:
+        webview.start(gui='edgechromium')
+        
+    except Exception as e:
+        # Falls es fehlschlägt, den echten Grund in die error_log.txt schreiben!
+        log_path = os.path.join(os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else APP_DIR, 'error_log.txt')
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"\n[pywebview Start-Fehler]: {e}\n")
+            
+        # Erst danach als Fallback den Browser öffnen
         import webbrowser
         webbrowser.open("http://127.0.0.1:5000")
         while True:
